@@ -643,8 +643,6 @@ async function startup() {
     // Start server FIRST (don't block on refresh)
     const server = app.listen(CONFIG.PORT, () => {
         console.log(`\n✓ Server running on port ${CONFIG.PORT}`);
-        console.log(`✓ Configure at: ${BASE_URL}`);
-        console.log(`✓ Stats: ${BASE_URL}/admin/stats`);
         console.log('='.repeat(70) + '\n');
         
         // NOW start background refresh (after server is live)
