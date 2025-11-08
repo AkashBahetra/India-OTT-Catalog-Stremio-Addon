@@ -507,49 +507,6 @@ async function refreshCatalog(catalogId, rpdbKey) {
 }
 
 // =============================================================================
-// SCHEDULED REFRESH (Every 12 hours)
-// =============================================================================
-
-async function scheduledRefresh() {
-    console.log('\n' + '='.repeat(70));
-    console.log(`[Cron] Starting scheduled refresh at ${new Date().toISOString()}`);
-    console.log('='.repeat(70));
-
-    for (const catalogId of Object.keys(ALL_CATALOGS)) {
-        try {
-            await refreshCatalog(catalogId, CONFIG.DEFAULT_RPDB_KEY);
-            // Small delay between catalogs
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (err) {
-            console.error(`[Cron] Failed to refresh ${catalogId}:`, err.message);
-        }
-    }
-
-    // Save all caches
-    await listCache.save();
-    await posterCache.save();
-
-    const stats = posterCache.getStats();
-    console.log(`[Cron] ✓ Refresh complete. Poster cache: ${stats.withPosters}/${stats.total}`);
-    console.log('='.repeat(70) + '\n');
-}
-
-// Schedule: Every 12 hours at :00 minutes
-cron.schedule('0 */12 * * *', scheduledRefresh, {
-    timezone: "Asia/Kolkata"
-});
-
-// Also run manual refresh on startup after 30 seconds
-let startupRefreshDone = false;
-setTimeout(async () => {
-    if (!startupRefreshDone) {
-        console.log('[Startup] Running initial refresh...');
-        await scheduledRefresh();
-        startupRefreshDone = true;
-    }
-}, 30000);
-
-// =============================================================================
 // EXPRESS SERVER
 // =============================================================================
 
@@ -630,6 +587,44 @@ app.get('/admin/stats', async (req, res) => {
 });
 
 // =============================================================================
+// SCHEDULED REFRESH (Every 12 hours)
+// =============================================================================
+
+async function scheduledRefresh() {
+    console.log('\n' + '='.repeat(70));
+    console.log(`[Cron] Starting scheduled refresh at ${new Date().toISOString()}`);
+    console.log('='.repeat(70));
+
+    for (const catalogId of Object.keys(ALL_CATALOGS)) {
+        try {
+            await refreshCatalog(catalogId, CONFIG.DEFAULT_RPDB_KEY);
+            // Small delay between catalogs
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        } catch (err) {
+            console.error(`[Cron] Failed to refresh ${catalogId}:`, err.message);
+        }
+    }
+
+    // Save all caches
+    await listCache.save();
+    await posterCache.save();
+
+    const stats = posterCache.getStats();
+    console.log(`[Cron] ✓ Refresh complete. Poster cache: ${stats.withPosters}/${stats.total}`);
+    console.log('='.repeat(70) + '\n');
+}
+
+// Schedule: Every 12 hours at :00 minutes
+cron.schedule('0 */12 * * *', () => {
+    console.log('[Cron] Triggered by schedule');
+    scheduledRefresh().catch(err => {
+        console.error('[Cron] Error:', err.message);
+    });
+}, {
+    timezone: "Asia/Kolkata"
+});
+
+// =============================================================================
 // STARTUP
 // =============================================================================
 
@@ -645,13 +640,25 @@ async function startup() {
     await posterCache.load();
     await listCache.load();
 
-    // Start server
-    app.listen(CONFIG.PORT, () => {
+    // Start server FIRST (don't block on refresh)
+    const server = app.listen(CONFIG.PORT, () => {
         console.log(`\n✓ Server running on port ${CONFIG.PORT}`);
-        console.log(`✓ Configure at: http://localhost:${CONFIG.PORT}`);
-        console.log(`✓ Stats: http://localhost:${CONFIG.PORT}/admin/stats`);
+        console.log(`✓ Configure at: ${BASE_URL}`);
+        console.log(`✓ Stats: ${BASE_URL}/admin/stats`);
         console.log('='.repeat(70) + '\n');
+        
+        // NOW start background refresh (after server is live)
+        console.log('[Startup] Server is live. Starting background refresh...');
+        setTimeout(() => {
+            scheduledRefresh().then(() => {
+                console.log('[Startup] ✓ Background refresh complete');
+            }).catch(err => {
+                console.error('[Startup] ✗ Background refresh failed:', err.message);
+            });
+        }, 10000); // Start after 10 seconds
     });
+
+    return server;
 }
 
 async function shutdown() {
@@ -665,6 +672,7 @@ async function shutdown() {
 process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 
+// Start the server
 startup().catch(err => {
     console.error('[Fatal]', err);
     process.exit(1);
