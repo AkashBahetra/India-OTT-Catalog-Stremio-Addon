@@ -5,14 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Indian OTT Catalogs - Configure</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
@@ -20,7 +15,6 @@
             justify-content: center;
             padding: 20px;
         }
-
         .container {
             background: white;
             border-radius: 16px;
@@ -29,33 +23,16 @@
             width: 100%;
             overflow: hidden;
         }
-
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 40px 30px;
             text-align: center;
         }
-
-        .header h1 {
-            font-size: 28px;
-            margin-bottom: 8px;
-            font-weight: 600;
-        }
-
-        .header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-
-        .content {
-            padding: 30px;
-        }
-
-        .section {
-            margin-bottom: 30px;
-        }
-
+        .header h1 { font-size: 28px; margin-bottom: 8px; font-weight: 600; }
+        .header p { opacity: 0.9; font-size: 14px; }
+        .content { padding: 30px; }
+        .section { margin-bottom: 30px; }
         .section-title {
             font-size: 16px;
             font-weight: 600;
@@ -65,7 +42,6 @@
             align-items: center;
             gap: 8px;
         }
-
         .section-title::before {
             content: '';
             width: 4px;
@@ -73,11 +49,7 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 2px;
         }
-
-        .input-group {
-            margin-bottom: 20px;
-        }
-
+        .input-group { margin-bottom: 20px; }
         .input-group label {
             display: block;
             font-size: 13px;
@@ -85,7 +57,6 @@
             margin-bottom: 8px;
             font-weight: 500;
         }
-
         .input-group input[type="text"] {
             width: 100%;
             padding: 12px 16px;
@@ -94,44 +65,29 @@
             font-size: 14px;
             transition: all 0.3s;
         }
-
         .input-group input[type="text"]:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-
         .input-hint {
             font-size: 12px;
             color: #999;
             margin-top: 6px;
         }
-
-        .input-hint a {
-            color: #667eea;
-            text-decoration: none;
-        }
-
-        .input-hint a:hover {
-            text-decoration: underline;
-        }
-
+        .input-hint a { color: #667eea; text-decoration: none; }
+        .input-hint a:hover { text-decoration: underline; }
         .checkbox-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
             gap: 12px;
         }
-
-        .checkbox-item {
-            position: relative;
-        }
-
+        .checkbox-item { position: relative; }
         .checkbox-item input[type="checkbox"] {
             position: absolute;
             opacity: 0;
             cursor: pointer;
         }
-
         .checkbox-label {
             display: flex;
             align-items: center;
@@ -142,12 +98,10 @@
             transition: all 0.3s;
             user-select: none;
         }
-
         .checkbox-item input[type="checkbox"]:checked + .checkbox-label {
             border-color: #667eea;
             background: rgba(102, 126, 234, 0.05);
         }
-
         .checkbox-custom {
             width: 20px;
             height: 20px;
@@ -158,12 +112,10 @@
             transition: all 0.3s;
             flex-shrink: 0;
         }
-
         .checkbox-item input[type="checkbox"]:checked + .checkbox-label .checkbox-custom {
             background: #667eea;
             border-color: #667eea;
         }
-
         .checkbox-item input[type="checkbox"]:checked + .checkbox-label .checkbox-custom::after {
             content: '✓';
             position: absolute;
@@ -173,31 +125,27 @@
             left: 50%;
             transform: translate(-50%, -50%);
         }
-
-        .checkbox-text {
-            flex: 1;
-        }
-
+        .checkbox-text { flex: 1; }
         .checkbox-text .title {
             font-size: 14px;
             color: #333;
             font-weight: 500;
         }
-
         .checkbox-text .subtitle {
             font-size: 12px;
             color: #999;
             margin-top: 2px;
         }
-
         .button-group {
-            display: flex;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 12px;
             margin-top: 30px;
         }
-
+        .button-group-full {
+            grid-column: 1 / -1;
+        }
         .btn {
-            flex: 1;
             padding: 14px 24px;
             border: none;
             border-radius: 8px;
@@ -209,32 +157,36 @@
             text-align: center;
             display: inline-block;
         }
-
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         }
-
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
         }
-
         .btn-primary:active {
             transform: translateY(0);
         }
-
         .btn-secondary {
             background: white;
             color: #667eea;
             border: 2px solid #667eea;
         }
-
         .btn-secondary:hover {
             background: rgba(102, 126, 234, 0.05);
         }
-
+        .btn-web {
+            background: #10b981;
+            color: white;
+            box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        }
+        .btn-web:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
+        }
         .install-url {
             background: #f5f5f5;
             padding: 12px 16px;
@@ -246,7 +198,6 @@
             margin-top: 15px;
             border-left: 4px solid #667eea;
         }
-
         .footer {
             text-align: center;
             padding: 20px;
@@ -254,49 +205,25 @@
             font-size: 12px;
             color: #999;
         }
-
-        .footer a {
-            color: #667eea;
-            text-decoration: none;
-        }
-
-        .emoji {
-            font-size: 20px;
-            margin-right: 8px;
-        }
-
-        @media (max-width: 600px) {
-            .checkbox-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .button-group {
-                flex-direction: column;
-            }
-
-            .header h1 {
-                font-size: 24px;
-            }
-        }
-
+        .footer a { color: #667eea; text-decoration: none; }
         .select-all {
             display: inline-block;
             font-size: 13px;
             color: #667eea;
             cursor: pointer;
-            margin-left: auto;
             text-decoration: underline;
         }
-
-        .select-all:hover {
-            color: #764ba2;
-        }
-
+        .select-all:hover { color: #764ba2; }
         .section-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 15px;
+        }
+        @media (max-width: 600px) {
+            .checkbox-grid { grid-template-columns: 1fr; }
+            .button-group { grid-template-columns: 1fr; }
+            .header h1 { font-size: 24px; }
         }
     </style>
 </head>
@@ -421,13 +348,19 @@
                 </div>
             </div>
 
-            <!-- Install Button -->
+            <!-- Install Buttons -->
             <div class="button-group">
-                <button class="btn btn-primary" onclick="installAddon()">
-                    Install to Stremio
+                <button class="btn btn-primary" onclick="installToApp()">
+                    📱 Install to Stremio App
                 </button>
+                <button class="btn btn-web" onclick="installToWeb()">
+                    🌐 Install to Stremio Web
+                </button>
+            </div>
+            
+            <div class="button-group button-group-full" style="margin-top: 12px;">
                 <button class="btn btn-secondary" onclick="copyUrl()">
-                    Copy URL
+                    📋 Copy Manifest URL
                 </button>
             </div>
 
@@ -438,7 +371,7 @@
         </div>
 
         <div class="footer">
-            Made with ❤️ by <a href="https://reddit.com/u/semi-column" target="_blank">u/semi-column</a>
+            Made with ❤️ by <a href="https://reddit.com/u/semi-colon" target="_blank">u/semi-colon</a>
         </div>
     </div>
 
@@ -461,6 +394,11 @@
             const checkboxes = document.querySelectorAll('.checkbox-item input[type="checkbox"]:checked');
             const selectedCatalogs = Array.from(checkboxes).map(cb => cb.value);
 
+            if (selectedCatalogs.length === 0) {
+                alert('Please select at least one catalog!');
+                return null;
+            }
+
             // Build config object
             const config = {
                 rpdb: rpdbKey,
@@ -474,46 +412,92 @@
             return `${BASE_URL}/${configBase64}/manifest.json`;
         }
 
-        function installAddon() {
+        function installToApp() {
             const manifestUrl = generateManifestUrl();
+            if (!manifestUrl) return;
+
             const stremioUrl = `stremio://${manifestUrl.replace(/^https?:\/\//, '')}`;
             
             // Show URL
             document.getElementById('url-display').style.display = 'block';
             document.getElementById('install-url').textContent = manifestUrl;
             
-            // Try to open Stremio
+            // Try to open Stremio app
             window.location.href = stremioUrl;
             
             // Fallback notification
             setTimeout(() => {
-                alert('If Stremio didn\'t open automatically:\n\n1. Copy the URL below\n2. Open Stremio\n3. Go to Addons\n4. Paste the URL');
+                alert('If Stremio app didn\'t open automatically:\n\n1. Copy the URL below\n2. Open Stremio app\n3. Go to Addons\n4. Click "+" and paste the URL');
             }, 1000);
+        }
+
+        function installToWeb() {
+            const manifestUrl = generateManifestUrl();
+            if (!manifestUrl) return;
+
+            const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(manifestUrl)}`;
+            
+            // Show URL
+            document.getElementById('url-display').style.display = 'block';
+            document.getElementById('install-url').textContent = manifestUrl;
+            
+            // Open Stremio Web in new tab
+            window.open(webUrl, '_blank');
         }
 
         function copyUrl() {
             const manifestUrl = generateManifestUrl();
+            if (!manifestUrl) return;
             
             // Show URL
             document.getElementById('url-display').style.display = 'block';
             document.getElementById('install-url').textContent = manifestUrl;
             
             // Copy to clipboard
-            navigator.clipboard.writeText(manifestUrl).then(() => {
-                const btn = event.target;
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied! ✓';
-                btn.style.background = '#10b981';
-                btn.style.borderColor = '#10b981';
-                
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.style.background = '';
-                    btn.style.borderColor = '';
-                }, 2000);
-            }).catch(err => {
-                alert('Failed to copy. Please copy manually from below.');
-            });
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(manifestUrl).then(() => {
+                    showCopySuccess();
+                }).catch(err => {
+                    fallbackCopy(manifestUrl);
+                });
+            } else {
+                fallbackCopy(manifestUrl);
+            }
+        }
+
+        function showCopySuccess() {
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '✓ Copied!';
+            btn.style.background = '#10b981';
+            btn.style.borderColor = '#10b981';
+            btn.style.color = 'white';
+            
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '';
+                btn.style.borderColor = '';
+                btn.style.color = '';
+            }, 2000);
+        }
+
+        function fallbackCopy(text) {
+            // Fallback for older browsers
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            
+            try {
+                document.execCommand('copy');
+                showCopySuccess();
+            } catch (err) {
+                alert('Failed to copy automatically. Please copy manually from below:\n\n' + text);
+            }
+            
+            document.body.removeChild(textArea);
         }
 
         // Update select all button on checkbox change
