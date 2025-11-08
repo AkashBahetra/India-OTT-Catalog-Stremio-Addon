@@ -1,9 +1,6 @@
 const express = require('express');
 const fetch = require('node-fetch');
-const fs = require('fs').promises;
-const fsSync = require('fs');
-const path = require('path');
-const cron = require('node-cron');
+const { Redis } = require('@upstash/redis');
 
 // =============================================================================
 // CONFIGURATION
@@ -14,28 +11,22 @@ const CONFIG = {
     MDBLIST_API_KEY: 'qplsb84vmulwetxrtghsp6u0q',
     DEFAULT_RPDB_KEY: 't0-free-rpdb',
     
-    // Cache files
-    POSTER_CACHE_FILE: path.join(__dirname, 'cache', 'posters.json'),
-    LIST_CACHE_FILE: path.join(__dirname, 'cache', 'lists.json'),
+    LIST_CACHE_SECONDS: 12 * 60 * 60, // 12 hours
+    POSTER_CACHE_SECONDS: 30 * 24 * 60 * 60, // 30 days
     
-    // Cache durations
-    LIST_CACHE_HOURS: 12, // Refresh lists every 12 hours
-    POSTER_CACHE_NEVER_EXPIRE: true, // Keep posters forever unless removed
-    
-    PORT: process.env.PORT || 7000,
-    REQUEST_TIMEOUT: 10000,
-    MAX_RETRIES: 2,
-    RETRY_DELAY: 1000,
+    PORT: process.env.PORT || 3000,
+    REQUEST_TIMEOUT: 8000,
+    MAX_RETRIES: 1,
+    RETRY_DELAY: 500,
     POSTER_FETCH_DELAY: 50
 };
 
-// Create cache directory if it doesn't exist
-const cacheDir = path.join(__dirname, 'cache');
-if (!fsSync.existsSync(cacheDir)) {
-    fsSync.mkdirSync(cacheDir, { recursive: true });
-}
+// Initialize Redis
+const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
-// All available catalogs
 const ALL_CATALOGS = {
     'trakt_prime_movies': { 
         type: "movie", 
@@ -96,7 +87,6 @@ function decodeConfig(configBase64) {
         const configStr = Buffer.from(configBase64, 'base64').toString('utf-8');
         return JSON.parse(configStr);
     } catch (err) {
-        console.error('[Config] Failed to decode:', err.message);
         return null;
     }
 }
@@ -114,7 +104,7 @@ function buildManifest(selectedCatalogs) {
         id: "com.semicolon.indian-ott-catalogs",
         version: "1.0.0",
         name: "Indian OTT Catalogs",
-        description: "Curated catalogs from Indian streaming services. Lists updated every 12 hours.",
+        description: "Curated catalogs from Indian streaming services. Auto-updated every 12 hours.",
         resources: ["catalog"],
         types: ["movie", "series"],
         catalogs: catalogs,
@@ -123,129 +113,37 @@ function buildManifest(selectedCatalogs) {
 }
 
 // =============================================================================
-// CACHE MANAGERS
+// REDIS CACHE HELPERS
 // =============================================================================
 
-class PosterCache {
-    constructor() {
-        this.cache = {};
-        this.loaded = false;
-    }
-
-    async load() {
-        try {
-            if (fsSync.existsSync(CONFIG.POSTER_CACHE_FILE)) {
-                const data = await fs.readFile(CONFIG.POSTER_CACHE_FILE, 'utf8');
-                this.cache = JSON.parse(data);
-                console.log(`[PosterCache] Loaded ${Object.keys(this.cache).length} posters`);
-            }
-            this.loaded = true;
-        } catch (err) {
-            console.error('[PosterCache] Load error:', err.message);
-            this.cache = {};
-            this.loaded = true;
-        }
-    }
-
-    async save() {
-        try {
-            await fs.writeFile(CONFIG.POSTER_CACHE_FILE, JSON.stringify(this.cache, null, 2), 'utf8');
-            console.log(`[PosterCache] Saved ${Object.keys(this.cache).length} posters`);
-        } catch (err) {
-            console.error('[PosterCache] Save error:', err.message);
-        }
-    }
-
-    get(imdbId) {
-        return this.cache[imdbId] || null;
-    }
-
-    has(imdbId) {
-        return imdbId in this.cache;
-    }
-
-    set(imdbId, posterUrl) {
-        this.cache[imdbId] = posterUrl;
-    }
-
-    getStats() {
-        const total = Object.keys(this.cache).length;
-        const withPosters = Object.values(this.cache).filter(p => p !== null).length;
-        return { total, withPosters, nullPosters: total - withPosters };
+async function getCachedPoster(imdbId) {
+    try {
+        return await redis.get(`poster:${imdbId}`);
+    } catch (err) {
+        return null;
     }
 }
 
-class ListCache {
-    constructor() {
-        this.cache = {};
-        this.loaded = false;
-    }
+async function setCachedPoster(imdbId, posterUrl) {
+    try {
+        await redis.setex(`poster:${imdbId}`, CONFIG.POSTER_CACHE_SECONDS, posterUrl || 'null');
+    } catch (err) {}
+}
 
-    async load() {
-        try {
-            if (fsSync.existsSync(CONFIG.LIST_CACHE_FILE)) {
-                const data = await fs.readFile(CONFIG.LIST_CACHE_FILE, 'utf8');
-                this.cache = JSON.parse(data);
-                console.log(`[ListCache] Loaded ${Object.keys(this.cache).length} lists`);
-            }
-            this.loaded = true;
-        } catch (err) {
-            console.error('[ListCache] Load error:', err.message);
-            this.cache = {};
-            this.loaded = true;
-        }
-    }
-
-    async save() {
-        try {
-            await fs.writeFile(CONFIG.LIST_CACHE_FILE, JSON.stringify(this.cache, null, 2), 'utf8');
-            console.log(`[ListCache] Saved ${Object.keys(this.cache).length} lists`);
-        } catch (err) {
-            console.error('[ListCache] Save error:', err.message);
-        }
-    }
-
-    get(catalogId) {
-        const entry = this.cache[catalogId];
-        if (!entry) return null;
-
-        // Check if cache is expired
-        const age = Date.now() - entry.timestamp;
-        const maxAge = CONFIG.LIST_CACHE_HOURS * 60 * 60 * 1000;
-
-        if (age > maxAge) {
-            console.log(`[ListCache] Cache expired for ${catalogId} (${(age / 3600000).toFixed(1)}h old)`);
-            return null;
-        }
-
-        return entry.data;
-    }
-
-    set(catalogId, data) {
-        this.cache[catalogId] = {
-            data: data,
-            timestamp: Date.now()
-        };
-    }
-
-    isExpired(catalogId) {
-        const entry = this.cache[catalogId];
-        if (!entry) return true;
-
-        const age = Date.now() - entry.timestamp;
-        const maxAge = CONFIG.LIST_CACHE_HOURS * 60 * 60 * 1000;
-        return age > maxAge;
-    }
-
-    getAge(catalogId) {
-        const entry = this.cache[catalogId];
-        if (!entry) return null;
-        return Math.floor((Date.now() - entry.timestamp) / 1000 / 60); // minutes
+async function getCachedList(catalogId) {
+    try {
+        const data = await redis.get(`list:${catalogId}`);
+        return data ? JSON.parse(data) : null;
+    } catch (err) {
+        return null;
     }
 }
 
-const posterCache = new PosterCache();
-const listCache = new ListCache();
+async function setCachedList(catalogId, data) {
+    try {
+        await redis.setex(`list:${catalogId}`, CONFIG.LIST_CACHE_SECONDS, JSON.stringify(data));
+    } catch (err) {}
+}
 
 // =============================================================================
 // POSTER FETCHING
@@ -267,7 +165,7 @@ async function fetchWithRetry(url, options = {}, retries = CONFIG.MAX_RETRIES) {
     } catch (err) {
         clearTimeout(timeout);
         
-        if (retries > 0 && (err.name === 'AbortError' || err.code === 'ECONNRESET')) {
+        if (retries > 0) {
             await new Promise(resolve => setTimeout(resolve, CONFIG.RETRY_DELAY));
             return fetchWithRetry(url, options, retries - 1);
         }
@@ -280,10 +178,7 @@ async function tryRPDB(imdbId, rpdbKey) {
     try {
         const directUrl = `https://api.ratingposterdb.com/${rpdbKey}/imdb/poster-default/${imdbId}.jpg`;
         const response = await fetchWithRetry(directUrl, { method: 'HEAD' }, 0);
-        
-        if (response.ok) {
-            return directUrl;
-        }
+        if (response.ok) return directUrl;
     } catch (err) {}
     return null;
 }
@@ -304,12 +199,13 @@ async function tryCinemeta(imdbId, type) {
 }
 
 async function getPoster(imdbId, type, traktPoster, rpdbKey) {
-    // Check cache first
-    if (posterCache.has(imdbId)) {
-        return posterCache.get(imdbId);
+    if (!imdbId) return null;
+
+    const cached = await getCachedPoster(imdbId);
+    if (cached !== null) {
+        return cached === 'null' ? null : cached;
     }
 
-    // Rate limiting
     const now = Date.now();
     const timeSinceLastRequest = now - lastPosterRequest;
     if (timeSinceLastRequest < CONFIG.POSTER_FETCH_DELAY) {
@@ -319,37 +215,16 @@ async function getPoster(imdbId, type, traktPoster, rpdbKey) {
     }
     lastPosterRequest = Date.now();
 
-    // Try multiple sources
-    let poster = null;
-    let source = 'none';
+    let poster = await tryRPDB(imdbId, rpdbKey);
+    if (!poster) poster = await tryCinemeta(imdbId, type);
+    if (!poster && traktPoster) poster = traktPoster;
 
-    poster = await tryRPDB(imdbId, rpdbKey);
-    if (poster) source = 'RPDB';
-
-    if (!poster) {
-        poster = await tryCinemeta(imdbId, type);
-        if (poster) source = 'Cinemeta';
-    }
-
-    if (!poster && traktPoster) {
-        poster = traktPoster;
-        source = 'Trakt';
-    }
-
-    // Cache the result
-    posterCache.set(imdbId, poster);
-    
-    if (poster) {
-        console.log(`[Poster] ✓ ${imdbId} from ${source}`);
-    } else {
-        console.log(`[Poster] ✗ ${imdbId} not found`);
-    }
-
+    await setCachedPoster(imdbId, poster);
     return poster;
 }
 
 // =============================================================================
-// API FETCHERS (Direct from APIs)
+// API FETCHERS
 // =============================================================================
 
 async function getTraktListFromAPI(user, listSlug) {
@@ -363,13 +238,10 @@ async function getTraktListFromAPI(user, listSlug) {
         }
     });
 
-    if (!response.ok) {
-        throw new Error(`Trakt API returned ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`Trakt API returned ${response.status}`);
 
     const items = await response.json();
     
-    // Return raw data with IMDB IDs
     return items.map(item => {
         const itemData = item.movie || item.show;
         if (!itemData?.ids?.imdb) return null;
@@ -393,9 +265,7 @@ async function getMDBListFromAPI(listIdentifier, mediaType) {
         headers: { 'Content-Type': 'application/json' }
     });
 
-    if (!response.ok) {
-        throw new Error(`MDBList API returned ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`MDBList API returned ${response.status}`);
 
     const responseData = await response.json();
     let items = [];
@@ -426,16 +296,11 @@ async function getMDBListFromAPI(listIdentifier, mediaType) {
 // =============================================================================
 
 async function getCatalogMetas(catalogId, rpdbKey) {
-    // Check if we have cached list data
-    const cachedData = listCache.get(catalogId);
+    const cachedData = await getCachedList(catalogId);
     
     if (cachedData) {
-        const age = listCache.getAge(catalogId);
-        console.log(`[List] Using cached ${catalogId} (${age} minutes old)`);
-        
-        // Build metas with posters from cache
-        const metas = cachedData.map(item => {
-            const poster = posterCache.get(item.imdbId);
+        const metasPromises = cachedData.map(async (item) => {  // ✅ REMOVED LIMIT
+            const poster = await getPoster(item.imdbId, item.type, item.traktPoster, rpdbKey);
             if (!poster) return null;
 
             return {
@@ -447,45 +312,33 @@ async function getCatalogMetas(catalogId, rpdbKey) {
                 imdbRating: item.rating ? item.rating.toFixed(1) : null,
                 year: item.year
             };
-        }).filter(Boolean);
+        });
 
-        return metas;
+        const metas = await Promise.all(metasPromises);
+        return metas.filter(Boolean);
     }
 
-    // Cache miss - fetch fresh data
-    console.log(`[List] Cache miss for ${catalogId}, fetching fresh data...`);
     return await refreshCatalog(catalogId, rpdbKey);
 }
 
 async function refreshCatalog(catalogId, rpdbKey) {
     const catalog = ALL_CATALOGS[catalogId];
-    if (!catalog) {
-        console.error(`[Refresh] Unknown catalog: ${catalogId}`);
-        return [];
-    }
-
-    console.log(`[Refresh] Fetching ${catalogId} from API...`);
+    if (!catalog) return [];
 
     try {
-        // Fetch raw data from API
         const rawData = await catalog.fetcher();
-        console.log(`[Refresh] Got ${rawData.length} items from API`);
+        await setCachedList(catalogId, rawData);
 
-        // Cache the raw list data
-        listCache.set(catalogId, rawData);
-
-        // Fetch posters for new items only
         const metas = [];
-        for (const item of rawData) {
-            let poster = posterCache.get(item.imdbId);
-            
-            // Only fetch if not in cache
-            if (!poster) {
-                poster = await getPoster(item.imdbId, item.type, item.traktPoster, rpdbKey);
-            }
+        const batchSize = 10; // Process 10 at a time
+        
+        for (let i = 0; i < rawData.length; i += batchSize) {  // ✅ Process ALL items
+            const batch = rawData.slice(i, i + batchSize);
+            const batchPromises = batch.map(async (item) => {
+                const poster = await getPoster(item.imdbId, item.type, item.traktPoster, rpdbKey);
+                if (!poster) return null;
 
-            if (poster) {
-                metas.push({
+                return {
                     id: item.imdbId,
                     type: item.type,
                     name: item.title,
@@ -493,185 +346,149 @@ async function refreshCatalog(catalogId, rpdbKey) {
                     description: item.overview || null,
                     imdbRating: item.rating ? item.rating.toFixed(1) : null,
                     year: item.year
-                });
-            }
+                };
+            });
+
+            const batchResults = await Promise.all(batchPromises);
+            metas.push(...batchResults.filter(Boolean));
         }
 
-        console.log(`[Refresh] ✓ ${catalogId}: ${metas.length}/${rawData.length} items with posters`);
         return metas;
-
     } catch (err) {
-        console.error(`[Refresh] ✗ Failed to refresh ${catalogId}:`, err.message);
+        console.error(`[Refresh] Error:`, err.message);
         return [];
     }
 }
 
 // =============================================================================
-// EXPRESS SERVER
+// EXPRESS SERVER WITH PROPER CORS
 // =============================================================================
 
 const app = express();
 
-// Add CORS headers for Stremio
+// Comprehensive CORS middleware
 app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // Allow all origins
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
+    res.header('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin');
+    res.header('Access-Control-Allow-Credentials', 'true');
     
     // Handle preflight
     if (req.method === 'OPTIONS') {
-        return res.sendStatus(200);
+        return res.status(200).end();
     }
     
     next();
 });
 
-// Serve configuration page
+// Serve HTML
+const fs = require('fs');
+const path = require('path');
+
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'configure.html'));
+    try {
+        const htmlPath = path.join(__dirname, 'configure.html');
+        if (fs.existsSync(htmlPath)) {
+            res.sendFile(htmlPath);
+        } else {
+            res.send('<h1>Indian OTT Catalogs</h1><p>Configuration page not found. Use manifest URL directly.</p>');
+        }
+    } catch (err) {
+        res.send('<h1>Indian OTT Catalogs</h1><p>Use manifest URL to install.</p>');
+    }
 });
 
 // Manifest endpoint
 app.get('/:config/manifest.json', (req, res) => {
     const config = decodeConfig(req.params.config);
-    if (!config) return res.status(400).json({ error: 'Invalid configuration' });
+    if (!config) {
+        return res.status(400).json({ error: 'Invalid configuration' });
+    }
     
     const selectedCatalogs = config.catalogs ? config.catalogs.split(',') : Object.keys(ALL_CATALOGS);
     const manifest = buildManifest(selectedCatalogs);
     
+    // Ensure proper content type and CORS
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
     res.json(manifest);
 });
 
 // Catalog endpoint
 app.get('/:config/catalog/:type/:id.json', async (req, res) => {
     const config = decodeConfig(req.params.config);
-    if (!config) return res.status(400).json({ error: 'Invalid configuration' });
+    if (!config) {
+        return res.status(400).json({ metas: [] });
+    }
 
     const rpdbKey = config.rpdb || CONFIG.DEFAULT_RPDB_KEY;
     const { id } = req.params;
 
-    console.log(`\n[Request] ${id} - Cache age: ${listCache.getAge(id) || 'none'} min`);
+    // Add timeout protection
+    const timeoutPromise = new Promise((resolve) => {
+        setTimeout(() => resolve([]), 8000);
+    });
 
     try {
-        const metas = await getCatalogMetas(id, rpdbKey);
+        const metas = await Promise.race([
+            getCatalogMetas(id, rpdbKey),
+            timeoutPromise
+        ]);
+        
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Cache-Control', 'public, max-age=600');
         res.json({ metas });
     } catch (err) {
-        console.error(`[Request] Error:`, err.message);
+        console.error(`[Catalog] Error:`, err.message);
         res.json({ metas: [] });
     }
 });
 
-// Manual refresh endpoint (for testing)
-app.get('/admin/refresh', async (req, res) => {
-    res.send('Refresh started in background...');
-    scheduledRefresh(); // Don't await
-});
-
 // Stats endpoint
 app.get('/admin/stats', async (req, res) => {
-    const posterStats = posterCache.getStats();
-    const listStats = {};
-    
-    for (const catalogId of Object.keys(ALL_CATALOGS)) {
-        listStats[catalogId] = {
-            age: listCache.getAge(catalogId),
-            expired: listCache.isExpired(catalogId)
-        };
+    try {
+        const keys = await redis.keys('*');
+        res.json({
+            totalKeys: keys.length,
+            posters: keys.filter(k => k.startsWith('poster:')).length,
+            lists: keys.filter(k => k.startsWith('list:')).length
+        });
+    } catch (err) {
+        res.json({ error: err.message });
     }
+});
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        redis: process.env.UPSTASH_REDIS_REST_URL ? 'configured' : 'missing'
+    });
+});
+
+// Test manifest endpoint (no config needed)
+app.get('/test-manifest', (req, res) => {
     res.json({
-        posters: posterStats,
-        lists: listStats,
-        nextRefresh: 'Every 12 hours at :00 (IST)'
+        id: "com.semicolon.indian-ott-catalogs",
+        version: "1.0.0",
+        name: "Indian OTT Catalogs - Test",
+        description: "Test manifest",
+        resources: ["catalog"],
+        types: ["movie"],
+        catalogs: [
+            { type: "movie", id: "test", name: "Test Catalog" }
+        ]
     });
 });
 
-// =============================================================================
-// SCHEDULED REFRESH (Every 12 hours)
-// =============================================================================
+// Export for Vercel
+module.exports = app;
 
-async function scheduledRefresh() {
-    console.log('\n' + '='.repeat(70));
-    console.log(`[Cron] Starting scheduled refresh at ${new Date().toISOString()}`);
-    console.log('='.repeat(70));
-
-    for (const catalogId of Object.keys(ALL_CATALOGS)) {
-        try {
-            await refreshCatalog(catalogId, CONFIG.DEFAULT_RPDB_KEY);
-            // Small delay between catalogs
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        } catch (err) {
-            console.error(`[Cron] Failed to refresh ${catalogId}:`, err.message);
-        }
-    }
-
-    // Save all caches
-    await listCache.save();
-    await posterCache.save();
-
-    const stats = posterCache.getStats();
-    console.log(`[Cron] ✓ Refresh complete. Poster cache: ${stats.withPosters}/${stats.total}`);
-    console.log('='.repeat(70) + '\n');
-}
-
-// Schedule: Every 12 hours at :00 minutes
-cron.schedule('0 */12 * * *', () => {
-    console.log('[Cron] Triggered by schedule');
-    scheduledRefresh().catch(err => {
-        console.error('[Cron] Error:', err.message);
+// Local development
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(CONFIG.PORT, () => {
+        console.log(`✓ Server running on port ${CONFIG.PORT}`);
     });
-}, {
-    timezone: "Asia/Kolkata"
-});
-
-// =============================================================================
-// STARTUP
-// =============================================================================
-
-async function startup() {
-    console.log('\n' + '='.repeat(70));
-    console.log('🇮🇳  Indian OTT Catalogs v1.0.0');
-    console.log('='.repeat(70));
-    console.log('⏰  List refresh: Every 12 hours');
-    console.log('💾  Poster cache: Persistent (never expires)');
-    console.log('='.repeat(70) + '\n');
-
-    // Load caches
-    await posterCache.load();
-    await listCache.load();
-
-    // Start server FIRST (don't block on refresh)
-    const server = app.listen(CONFIG.PORT, () => {
-        console.log(`\n✓ Server running on port ${CONFIG.PORT}`);
-        console.log('='.repeat(70) + '\n');
-        
-        // NOW start background refresh (after server is live)
-        console.log('[Startup] Server is live. Starting background refresh...');
-        setTimeout(() => {
-            scheduledRefresh().then(() => {
-                console.log('[Startup] ✓ Background refresh complete');
-            }).catch(err => {
-                console.error('[Startup] ✗ Background refresh failed:', err.message);
-            });
-        }, 10000); // Start after 10 seconds
-    });
-
-    return server;
 }
-
-async function shutdown() {
-    console.log('\n[Shutdown] Saving caches...');
-    await posterCache.save();
-    await listCache.save();
-    console.log('[Shutdown] Complete');
-    process.exit(0);
-}
-
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
-// Start the server
-startup().catch(err => {
-    console.error('[Fatal]', err);
-    process.exit(1);
-});
