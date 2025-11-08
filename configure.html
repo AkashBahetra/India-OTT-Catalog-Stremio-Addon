@@ -6,6 +6,7 @@
     <title>Indian OTT Catalogs - Configure</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -15,24 +16,30 @@
             justify-content: center;
             padding: 20px;
         }
+        
         .container {
             background: white;
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            max-width: 600px;
+            max-width: 700px;
             width: 100%;
             overflow: hidden;
         }
+        
         .header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 40px 30px;
             text-align: center;
         }
+        
         .header h1 { font-size: 28px; margin-bottom: 8px; font-weight: 600; }
         .header p { opacity: 0.9; font-size: 14px; }
+        
         .content { padding: 30px; }
+        
         .section { margin-bottom: 30px; }
+        
         .section-title {
             font-size: 16px;
             font-weight: 600;
@@ -42,6 +49,7 @@
             align-items: center;
             gap: 8px;
         }
+        
         .section-title::before {
             content: '';
             width: 4px;
@@ -49,7 +57,9 @@
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             border-radius: 2px;
         }
+        
         .input-group { margin-bottom: 20px; }
+        
         .input-group label {
             display: block;
             font-size: 13px;
@@ -57,6 +67,7 @@
             margin-bottom: 8px;
             font-weight: 500;
         }
+        
         .input-group input[type="text"] {
             width: 100%;
             padding: 12px 16px;
@@ -65,86 +76,104 @@
             font-size: 14px;
             transition: all 0.3s;
         }
+        
         .input-group input[type="text"]:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
+        
         .input-hint {
             font-size: 12px;
             color: #999;
             margin-top: 6px;
         }
+        
         .input-hint a { color: #667eea; text-decoration: none; }
         .input-hint a:hover { text-decoration: underline; }
-        .checkbox-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-            gap: 12px;
+        
+        .catalog-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
         }
-        .checkbox-item { position: relative; }
-        .checkbox-item input[type="checkbox"] {
-            position: absolute;
-            opacity: 0;
-            cursor: pointer;
-        }
-        .checkbox-label {
+        
+        .catalog-item {
             display: flex;
             align-items: center;
-            padding: 12px 16px;
-            border: 2px solid #e0e0e0;
+            padding: 12px;
+            background: #f8f9fa;
             border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s;
-            user-select: none;
+            cursor: move;
+            transition: all 0.2s;
+            border: 2px solid transparent;
         }
-        .checkbox-item input[type="checkbox"]:checked + .checkbox-label {
+        
+        .catalog-item:hover {
+            background: #f0f1f3;
+        }
+        
+        .catalog-item.dragging {
+            opacity: 0.5;
+        }
+        
+        .catalog-item.drag-over {
             border-color: #667eea;
             background: rgba(102, 126, 234, 0.05);
         }
-        .checkbox-custom {
-            width: 20px;
-            height: 20px;
-            border: 2px solid #ddd;
-            border-radius: 4px;
+        
+        .drag-handle {
+            font-size: 18px;
+            color: #999;
             margin-right: 12px;
-            position: relative;
-            transition: all 0.3s;
-            flex-shrink: 0;
+            cursor: grab;
         }
-        .checkbox-item input[type="checkbox"]:checked + .checkbox-label .checkbox-custom {
-            background: #667eea;
-            border-color: #667eea;
+        
+        .drag-handle:active {
+            cursor: grabbing;
         }
-        .checkbox-item input[type="checkbox"]:checked + .checkbox-label .checkbox-custom::after {
-            content: '✓';
-            position: absolute;
-            color: white;
+        
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            flex: 1;
+        }
+        
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 12px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+        
+        .catalog-info {
+            flex: 1;
+        }
+        
+        .catalog-title {
             font-size: 14px;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-        .checkbox-text { flex: 1; }
-        .checkbox-text .title {
-            font-size: 14px;
-            color: #333;
             font-weight: 500;
+            color: #333;
         }
-        .checkbox-text .subtitle {
+        
+        .catalog-subtitle {
             font-size: 12px;
             color: #999;
             margin-top: 2px;
         }
+        
         .button-group {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 12px;
             margin-top: 30px;
         }
+        
         .button-group-full {
             grid-column: 1 / -1;
         }
+        
         .btn {
             padding: 14px 24px;
             border: none;
@@ -157,36 +186,40 @@
             text-align: center;
             display: inline-block;
         }
+        
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         }
+        
         .btn-primary:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
         }
-        .btn-primary:active {
-            transform: translateY(0);
-        }
+        
         .btn-secondary {
             background: white;
             color: #667eea;
             border: 2px solid #667eea;
         }
+        
         .btn-secondary:hover {
             background: rgba(102, 126, 234, 0.05);
         }
+        
         .btn-web {
             background: #10b981;
             color: white;
             box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
         }
+        
         .btn-web:hover {
             background: #059669;
             transform: translateY(-2px);
             box-shadow: 0 6px 20px rgba(16, 185, 129, 0.5);
         }
+        
         .install-url {
             background: #f5f5f5;
             padding: 12px 16px;
@@ -198,6 +231,7 @@
             margin-top: 15px;
             border-left: 4px solid #667eea;
         }
+        
         .footer {
             text-align: center;
             padding: 20px;
@@ -205,23 +239,26 @@
             font-size: 12px;
             color: #999;
         }
+        
         .footer a { color: #667eea; text-decoration: none; }
-        .select-all {
-            display: inline-block;
-            font-size: 13px;
-            color: #667eea;
-            cursor: pointer;
-            text-decoration: underline;
-        }
-        .select-all:hover { color: #764ba2; }
+        
         .section-header {
             display: flex;
             align-items: center;
             justify-content: space-between;
             margin-bottom: 15px;
         }
+        
+        .select-all {
+            font-size: 13px;
+            color: #667eea;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+        
+        .select-all:hover { color: #764ba2; }
+        
         @media (max-width: 600px) {
-            .checkbox-grid { grid-template-columns: 1fr; }
             .button-group { grid-template-columns: 1fr; }
             .header h1 { font-size: 24px; }
         }
@@ -235,7 +272,7 @@
         </div>
 
         <div class="content">
-            <!-- RPDB API Key Section -->
+            <!-- RPDB API Key -->
             <div class="section">
                 <div class="section-title">🔑 RPDB API Key (Optional)</div>
                 <div class="input-group">
@@ -243,10 +280,10 @@
                     <input 
                         type="text" 
                         id="rpdb-key" 
-                        placeholder="Leave empty for default (may have limits)"
+                        placeholder="Leave empty for default"
                         value="">
                     <div class="input-hint">
-                        Get your free key at <a href="https://ratingposterdb.com/" target="_blank">ratingposterdb.com</a> for better reliability
+                        Get your free key at <a href="https://ratingposterdb.com/" target="_blank">ratingposterdb.com</a>
                     </div>
                 </div>
             </div>
@@ -254,97 +291,14 @@
             <!-- Catalog Selection -->
             <div class="section">
                 <div class="section-header">
-                    <div class="section-title">📺 Select Catalogs</div>
+                    <div class="section-title">📺 Select & Arrange Catalogs</div>
                     <span class="select-all" onclick="toggleAll()">Select All</span>
                 </div>
-                <div class="checkbox-grid">
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_prime_movies" value="trakt_prime_movies" checked>
-                        <label for="trakt_prime_movies" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Prime Video Movies</div>
-                                <div class="subtitle">Top 10 movies in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_prime_shows" value="trakt_prime_shows" checked>
-                        <label for="trakt_prime_shows" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Prime Video Shows</div>
-                                <div class="subtitle">Top 10 series in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_netflix_movies" value="trakt_netflix_movies" checked>
-                        <label for="trakt_netflix_movies" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Netflix Movies</div>
-                                <div class="subtitle">Top 10 movies in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_netflix_shows" value="trakt_netflix_shows" checked>
-                        <label for="trakt_netflix_shows" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Netflix Shows</div>
-                                <div class="subtitle">Top 10 series in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_zee5_overall" value="trakt_zee5_overall" checked>
-                        <label for="trakt_zee5_overall" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Zee5 Top Shows</div>
-                                <div class="subtitle">Top 10 in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="trakt_hotstar_overall" value="trakt_hotstar_overall" checked>
-                        <label for="trakt_hotstar_overall" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Hotstar Top Shows</div>
-                                <div class="subtitle">Top 10 in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="mdblist_latest_movies" value="mdblist_latest_movies" checked>
-                        <label for="mdblist_latest_movies" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Latest 100 Movies</div>
-                                <div class="subtitle">New releases in India</div>
-                            </div>
-                        </label>
-                    </div>
-
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="mdblist_latest_series" value="mdblist_latest_series" checked>
-                        <label for="mdblist_latest_series" class="checkbox-label">
-                            <div class="checkbox-custom"></div>
-                            <div class="checkbox-text">
-                                <div class="title">Latest 100 Shows</div>
-                                <div class="subtitle">New series in India</div>
-                            </div>
-                        </label>
-                    </div>
+                <div class="catalog-list" id="catalog-list">
+                    <!-- Catalogs will be rendered here -->
+                </div>
+                <div class="input-hint" style="margin-top: 12px;">
+                    💡 Drag to reorder • Uncheck to hide
                 </div>
             </div>
 
@@ -376,39 +330,130 @@
     </div>
 
     <script>
-        // Get current host
         const BASE_URL = window.location.origin;
 
+        const CATALOGS = [
+            { id: 'trakt_prime_movies', name: 'Prime Video Movies', desc: 'Top 10 in India' },
+            { id: 'trakt_prime_shows', name: 'Prime Video Shows', desc: 'Top 10 in India' },
+            { id: 'trakt_netflix_movies', name: 'Netflix Movies', desc: 'Top 10 in India' },
+            { id: 'trakt_netflix_shows', name: 'Netflix Shows', desc: 'Top 10 in India' },
+            { id: 'trakt_zee5_overall', name: 'Zee5 Top Shows', desc: 'Top 10 in India' },
+            { id: 'trakt_hotstar_overall', name: 'Hotstar Top Shows', desc: 'Top 10 in India' },
+            { id: 'mdblist_latest_movies', name: 'Latest 100 Movies', desc: 'New releases in India' },
+            { id: 'mdblist_latest_series', name: 'Latest 100 Shows', desc: 'New series in India' }
+        ];
+
+        // Render catalogs
+        function renderCatalogs() {
+            const container = document.getElementById('catalog-list');
+            container.innerHTML = CATALOGS.map(cat => `
+                <div class="catalog-item" draggable="true" data-id="${cat.id}">
+                    <div class="drag-handle">⋮⋮</div>
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="${cat.id}" checked>
+                        <label for="${cat.id}" class="catalog-info">
+                            <div class="catalog-title">${cat.name}</div>
+                            <div class="catalog-subtitle">${cat.desc}</div>
+                        </label>
+                    </div>
+                </div>
+            `).join('');
+
+            // Add drag and drop
+            const items = container.querySelectorAll('.catalog-item');
+            items.forEach(item => {
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragend', handleDragEnd);
+            });
+        }
+
+        let draggedElement = null;
+
+        function handleDragStart(e) {
+            draggedElement = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+
+        function handleDragOver(e) {
+            if (e.preventDefault) {
+                e.preventDefault();
+            }
+            e.dataTransfer.dropEffect = 'move';
+            
+            const items = [...document.querySelectorAll('.catalog-item')];
+            const afterElement = getDragAfterElement(e.clientY);
+            const container = document.getElementById('catalog-list');
+            
+            if (afterElement == null) {
+                container.appendChild(draggedElement);
+            } else {
+                container.insertBefore(draggedElement, afterElement);
+            }
+            
+            return false;
+        }
+
+        function handleDrop(e) {
+            if (e.stopPropagation) {
+                e.stopPropagation();
+            }
+            return false;
+        }
+
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.catalog-item').forEach(item => {
+                item.classList.remove('drag-over');
+            });
+        }
+
+        function getDragAfterElement(y) {
+            const items = [...document.querySelectorAll('.catalog-item:not(.dragging)')];
+            
+            return items.reduce((closest, child) => {
+                const box = child.getBoundingClientRect();
+                const offset = y - box.top - box.height / 2;
+                
+                if (offset < 0 && offset > closest.offset) {
+                    return { offset: offset, element: child };
+                } else {
+                    return closest;
+                }
+            }, { offset: Number.NEGATIVE_INFINITY }).element;
+        }
+
         function toggleAll() {
-            const checkboxes = document.querySelectorAll('.checkbox-item input[type="checkbox"]');
+            const checkboxes = document.querySelectorAll('.catalog-item input[type="checkbox"]');
             const allChecked = Array.from(checkboxes).every(cb => cb.checked);
             checkboxes.forEach(cb => cb.checked = !allChecked);
             
-            // Update button text
             const btn = document.querySelector('.select-all');
             btn.textContent = allChecked ? 'Select All' : 'Deselect All';
         }
 
         function generateManifestUrl() {
             const rpdbKey = document.getElementById('rpdb-key').value.trim() || 't0-free-rpdb';
-            const checkboxes = document.querySelectorAll('.checkbox-item input[type="checkbox"]:checked');
-            const selectedCatalogs = Array.from(checkboxes).map(cb => cb.value);
+            
+            // Get selected catalogs in order
+            const items = document.querySelectorAll('.catalog-item');
+            const selectedCatalogs = Array.from(items)
+                .filter(item => item.querySelector('input[type="checkbox"]').checked)
+                .map(item => item.dataset.id);
 
             if (selectedCatalogs.length === 0) {
                 alert('Please select at least one catalog!');
                 return null;
             }
 
-            // Build config object
             const config = {
                 rpdb: rpdbKey,
                 catalogs: selectedCatalogs.join(',')
             };
 
-            // Encode config as base64
-            const configStr = JSON.stringify(config);
-            const configBase64 = btoa(configStr);
-
+            const configBase64 = btoa(JSON.stringify(config));
             return `${BASE_URL}/${configBase64}/manifest.json`;
         }
 
@@ -418,14 +463,11 @@
 
             const stremioUrl = `stremio://${manifestUrl.replace(/^https?:\/\//, '')}`;
             
-            // Show URL
             document.getElementById('url-display').style.display = 'block';
             document.getElementById('install-url').textContent = manifestUrl;
             
-            // Try to open Stremio app
             window.location.href = stremioUrl;
             
-            // Fallback notification
             setTimeout(() => {
                 alert('If Stremio app didn\'t open automatically:\n\n1. Copy the URL below\n2. Open Stremio app\n3. Go to Addons\n4. Click "+" and paste the URL');
             }, 1000);
@@ -437,11 +479,9 @@
 
             const webUrl = `https://web.stremio.com/#/addons?addon=${encodeURIComponent(manifestUrl)}`;
             
-            // Show URL
             document.getElementById('url-display').style.display = 'block';
             document.getElementById('install-url').textContent = manifestUrl;
             
-            // Open Stremio Web in new tab
             window.open(webUrl, '_blank');
         }
 
@@ -449,66 +489,30 @@
             const manifestUrl = generateManifestUrl();
             if (!manifestUrl) return;
             
-            // Show URL
             document.getElementById('url-display').style.display = 'block';
             document.getElementById('install-url').textContent = manifestUrl;
             
-            // Copy to clipboard
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(manifestUrl).then(() => {
-                    showCopySuccess();
-                }).catch(err => {
-                    fallbackCopy(manifestUrl);
-                });
-            } else {
-                fallbackCopy(manifestUrl);
-            }
+            navigator.clipboard.writeText(manifestUrl).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Copied!';
+                btn.style.background = '#10b981';
+                btn.style.borderColor = '#10b981';
+                btn.style.color = 'white';
+                
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                    btn.style.color = '';
+                }, 2000);
+            }).catch(() => {
+                alert('Copy the URL below manually');
+            });
         }
 
-        function showCopySuccess() {
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.textContent = '✓ Copied!';
-            btn.style.background = '#10b981';
-            btn.style.borderColor = '#10b981';
-            btn.style.color = 'white';
-            
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.style.background = '';
-                btn.style.borderColor = '';
-                btn.style.color = '';
-            }, 2000);
-        }
-
-        function fallbackCopy(text) {
-            // Fallback for older browsers
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.position = 'fixed';
-            textArea.style.left = '-999999px';
-            document.body.appendChild(textArea);
-            textArea.select();
-            
-            try {
-                document.execCommand('copy');
-                showCopySuccess();
-            } catch (err) {
-                alert('Failed to copy automatically. Please copy manually from below:\n\n' + text);
-            }
-            
-            document.body.removeChild(textArea);
-        }
-
-        // Update select all button on checkbox change
-        document.addEventListener('change', (e) => {
-            if (e.target.type === 'checkbox') {
-                const checkboxes = document.querySelectorAll('.checkbox-item input[type="checkbox"]');
-                const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-                const btn = document.querySelector('.select-all');
-                btn.textContent = allChecked ? 'Deselect All' : 'Select All';
-            }
-        });
+        // Initialize
+        renderCatalogs();
     </script>
 </body>
 </html>
