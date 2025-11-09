@@ -8,14 +8,18 @@ const cron = require('node-cron');
 // =============================================================================
 
 const CONFIG = {
-    TRAKT_API_KEY: '1ad94277c08d8bfccd4fca5ced267e3fa0961ad5ec5aa0a27239b3fc759e2372',
-    MDBLIST_API_KEY: 'qplsb84vmulwetxrtghsp6u0q',
+    TRAKT_API_KEY: process.env.TRAKT_API_KEY,
+    MDBLIST_API_KEY: process.env.MDBLIST_API_KEY,
     DEFAULT_RPDB_KEY: 't0-free-rpdb',
     
     POSTER_CACHE_DAYS: 30,
     
     PORT: process.env.PORT || 3000,
     REQUEST_TIMEOUT: 8000,
+    
+    // In-memory cache settings
+    MEMORY_CACHE_TTL: 60 * 60 * 1000, // 1 hour
+    MEMORY_CACHE_MAX_SIZE: 1000, // Max items in memory
 };
 
 // Initialize Redis
@@ -23,6 +27,62 @@ const redis = new Redis({
     url: process.env.UPSTASH_REDIS_REST_URL,
     token: process.env.UPSTASH_REDIS_REST_TOKEN,
 });
+
+// =============================================================================
+// IN-MEMORY CACHE (Reduces Redis requests dramatically)
+// =============================================================================
+
+class MemoryCache {
+    constructor(ttl = CONFIG.MEMORY_CACHE_TTL, maxSize = CONFIG.MEMORY_CACHE_MAX_SIZE) {
+        this.cache = new Map();
+        this.ttl = ttl;
+        this.maxSize = maxSize;
+    }
+
+    set(key, value) {
+        // Implement LRU: remove oldest if at capacity
+        if (this.cache.size >= this.maxSize) {
+            const firstKey = this.cache.keys().next().value;
+            this.cache.delete(firstKey);
+        }
+
+        this.cache.set(key, {
+            value,
+            timestamp: Date.now()
+        });
+    }
+
+    get(key) {
+        const item = this.cache.get(key);
+        
+        if (!item) return null;
+        
+        // Check if expired
+        if (Date.now() - item.timestamp > this.ttl) {
+            this.cache.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    }
+
+    has(key) {
+        return this.get(key) !== null;
+    }
+
+    clear() {
+        this.cache.clear();
+    }
+
+    size() {
+        return this.cache.size;
+    }
+}
+
+// Create memory caches
+const posterCache = new MemoryCache(CONFIG.MEMORY_CACHE_TTL);
+const listCache = new MemoryCache(CONFIG.MEMORY_CACHE_TTL);
+const installCache = new MemoryCache(24 * 60 * 60 * 1000); // 24 hours for install tracking
 
 // =============================================================================
 // CATALOG DEFINITIONS
@@ -116,21 +176,33 @@ async function fetchWithTimeout(url, options = {}) {
 }
 
 // =============================================================================
-// ANALYTICS
+// ANALYTICS (Optimized with memory cache)
 // =============================================================================
 
 async function trackInstall(configHash) {
     try {
+        // Check memory cache first
+        if (installCache.has(configHash)) {
+            return; // Already tracked recently, skip Redis
+        }
+
         const key = `install:${configHash}`;
         const exists = await redis.exists(key);
         
         if (!exists) {
-            await redis.set(key, Date.now());
-            await redis.incr('stats:total_installs');
+            // Use pipeline to batch operations
+            await redis.pipeline()
+                .set(key, Date.now())
+                .incr('stats:total_installs')
+                .set(`last_seen:${configHash}`, Date.now())
+                .exec();
+        } else {
+            // Only update last seen
+            await redis.set(`last_seen:${configHash}`, Date.now());
         }
         
-        // Track last seen
-        await redis.set(`last_seen:${configHash}`, Date.now());
+        // Cache in memory to prevent duplicate tracking
+        installCache.set(configHash, true);
     } catch (err) {
         console.error('[Analytics] Error:', err.message);
     }
@@ -145,11 +217,12 @@ async function getStats() {
         const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
         let activeUsers = 0;
         
-        for (const key of lastSeenKeys) {
-            const lastSeen = await redis.get(key);
-            if (lastSeen && parseInt(lastSeen) > sevenDaysAgo) {
-                activeUsers++;
-            }
+        // Batch get all last_seen values
+        if (lastSeenKeys.length > 0) {
+            const lastSeenValues = await redis.mget(...lastSeenKeys);
+            activeUsers = lastSeenValues.filter(val => 
+                val && parseInt(val) > sevenDaysAgo
+            ).length;
         }
         
         return {
@@ -163,12 +236,26 @@ async function getStats() {
 }
 
 // =============================================================================
-// REDIS OPERATIONS
+// REDIS OPERATIONS (Optimized with memory cache)
 // =============================================================================
 
 async function getCachedPoster(imdbId) {
     try {
-        return await redis.get(`poster:${imdbId}`);
+        // Check memory cache first
+        const memCached = posterCache.get(`poster:${imdbId}`);
+        if (memCached !== null) {
+            return memCached;
+        }
+
+        // If not in memory, get from Redis
+        const redisCached = await redis.get(`poster:${imdbId}`);
+        
+        // Store in memory cache for future requests
+        if (redisCached !== null) {
+            posterCache.set(`poster:${imdbId}`, redisCached);
+        }
+        
+        return redisCached;
     } catch (err) {
         return null;
     }
@@ -176,8 +263,14 @@ async function getCachedPoster(imdbId) {
 
 async function setCachedPoster(imdbId, posterUrl) {
     try {
+        const value = posterUrl || 'null';
+        
+        // Set in memory cache immediately
+        posterCache.set(`poster:${imdbId}`, value);
+        
+        // Set in Redis for persistence
         const ttl = CONFIG.POSTER_CACHE_DAYS * 24 * 60 * 60;
-        await redis.setex(`poster:${imdbId}`, ttl, posterUrl || 'null');
+        await redis.setex(`poster:${imdbId}`, ttl, value);
     } catch (err) {
         console.error('[Redis] Failed to cache poster:', err.message);
     }
@@ -185,8 +278,22 @@ async function setCachedPoster(imdbId, posterUrl) {
 
 async function getCachedList(catalogId) {
     try {
+        // Check memory cache first
+        const memCached = listCache.get(`list:${catalogId}`);
+        if (memCached !== null) {
+            return memCached;
+        }
+
+        // If not in memory, get from Redis
         const data = await redis.get(`list:${catalogId}`);
-        return data ? JSON.parse(data) : null;
+        const parsed = data ? JSON.parse(data) : null;
+        
+        // Store in memory cache
+        if (parsed) {
+            listCache.set(`list:${catalogId}`, parsed);
+        }
+        
+        return parsed;
     } catch (err) {
         return null;
     }
@@ -194,14 +301,54 @@ async function getCachedList(catalogId) {
 
 async function setCachedList(catalogId, data) {
     try {
-        await redis.set(`list:${catalogId}`, JSON.stringify(data));
+        const serialized = JSON.stringify(data);
+        
+        // Set in memory cache immediately
+        listCache.set(`list:${catalogId}`, data);
+        
+        // Set in Redis for persistence
+        await redis.set(`list:${catalogId}`, serialized);
     } catch (err) {
         console.error('[Redis] Failed to cache list:', err.message);
     }
 }
 
+// Batch fetch multiple posters at once
+async function batchGetPosters(imdbIds) {
+    const results = {};
+    const toFetch = [];
+    
+    // Check memory cache first
+    for (const imdbId of imdbIds) {
+        const memCached = posterCache.get(`poster:${imdbId}`);
+        if (memCached !== null) {
+            results[imdbId] = memCached === 'null' ? null : memCached;
+        } else {
+            toFetch.push(imdbId);
+        }
+    }
+    
+    // Batch fetch remaining from Redis
+    if (toFetch.length > 0) {
+        const keys = toFetch.map(id => `poster:${id}`);
+        const values = await redis.mget(...keys);
+        
+        toFetch.forEach((imdbId, idx) => {
+            const value = values[idx];
+            results[imdbId] = value === 'null' ? null : value;
+            
+            // Cache in memory
+            if (value !== null) {
+                posterCache.set(`poster:${imdbId}`, value);
+            }
+        });
+    }
+    
+    return results;
+}
+
 // =============================================================================
-// POSTER FETCHING
+// POSTER FETCHING (Optimized)
 // =============================================================================
 
 async function fetchRPDBPoster(imdbId, rpdbKey) {
@@ -217,7 +364,7 @@ async function fetchRPDBPoster(imdbId, rpdbKey) {
 async function getPoster(imdbId, rpdbKey) {
     if (!imdbId) return null;
 
-    // Check cache first
+    // Check cache (memory + Redis)
     const cached = await getCachedPoster(imdbId);
     if (cached !== null) {
         return cached === 'null' ? null : cached;
@@ -320,7 +467,7 @@ async function refreshCatalog(catalogId) {
 }
 
 async function getCatalogMetas(catalogId, rpdbKey) {
-    // Get cached list
+    // Get cached list (memory + Redis)
     let items = await getCachedList(catalogId);
     
     // If not cached, refresh
@@ -328,13 +475,39 @@ async function getCatalogMetas(catalogId, rpdbKey) {
         items = await refreshCatalog(catalogId);
     }
 
+    // Batch fetch all posters at once
+    const imdbIds = items.map(item => item.imdbId);
+    const posterMap = await batchGetPosters(imdbIds);
+    
+    // Fetch missing posters
+    const missingPosters = [];
+    for (const imdbId of imdbIds) {
+        if (posterMap[imdbId] === undefined || posterMap[imdbId] === null) {
+            missingPosters.push(imdbId);
+        }
+    }
+    
+    // Fetch missing posters (but limit concurrent requests)
+    const CONCURRENT_LIMIT = 5;
+    for (let i = 0; i < missingPosters.length; i += CONCURRENT_LIMIT) {
+        const batch = missingPosters.slice(i, i + CONCURRENT_LIMIT);
+        await Promise.all(
+            batch.map(async (imdbId) => {
+                const poster = await fetchRPDBPoster(imdbId, rpdbKey);
+                posterMap[imdbId] = poster;
+                await setCachedPoster(imdbId, poster);
+            })
+        );
+    }
+
     // Build metas with posters
-    const metas = [];
-    for (const item of items) {
-        const poster = await getPoster(item.imdbId, rpdbKey);
-        
-        if (poster) {
-            metas.push({
+    const metas = items
+        .map(item => {
+            const poster = posterMap[item.imdbId];
+            
+            if (!poster) return null;
+            
+            return {
                 id: item.imdbId,
                 type: item.type,
                 name: item.title,
@@ -342,9 +515,9 @@ async function getCatalogMetas(catalogId, rpdbKey) {
                 description: item.description || undefined,
                 imdbRating: item.rating ? item.rating.toFixed(1) : undefined,
                 releaseInfo: item.year ? String(item.year) : undefined
-            });
-        }
-    }
+            };
+        })
+        .filter(Boolean);
 
     return metas;
 }
@@ -420,7 +593,7 @@ app.get('/:config/manifest.json', async (req, res) => {
         return res.status(400).json({ error: 'Invalid configuration' });
     }
     
-    // Track this installation
+    // Track this installation (optimized with memory cache)
     await trackInstall(req.params.config);
     
     const selectedCatalogs = config.catalogs.split(',').filter(id => ALL_CATALOGS[id]);
@@ -481,13 +654,18 @@ app.get('/admin/analytics', async (req, res) => {
         
         let last24h = 0, last7d = 0, last30d = 0;
         
-        for (const key of lastSeenKeys) {
-            const lastSeen = parseInt(await redis.get(key));
-            const diff = now - lastSeen;
+        // Batch get all values
+        if (lastSeenKeys.length > 0) {
+            const lastSeenValues = await redis.mget(...lastSeenKeys);
             
-            if (diff < day) last24h++;
-            if (diff < 7 * day) last7d++;
-            if (diff < 30 * day) last30d++;
+            lastSeenValues.forEach(lastSeen => {
+                if (!lastSeen) return;
+                const diff = now - parseInt(lastSeen);
+                
+                if (diff < day) last24h++;
+                if (diff < 7 * day) last7d++;
+                if (diff < 30 * day) last30d++;
+            });
         }
         
         res.json({
@@ -497,6 +675,11 @@ app.get('/admin/analytics', async (req, res) => {
                 last24h: last24h,
                 last7d: last7d,
                 last30d: last30d
+            },
+            cacheStats: {
+                memoryPosters: posterCache.size(),
+                memoryLists: listCache.size(),
+                memoryInstalls: installCache.size()
             },
             timestamp: new Date().toISOString()
         });
@@ -510,7 +693,12 @@ app.get('/health', (req, res) => {
     res.json({ 
         status: 'ok',
         timestamp: new Date().toISOString(),
-        catalogs: Object.keys(ALL_CATALOGS).length
+        catalogs: Object.keys(ALL_CATALOGS).length,
+        memoryCache: {
+            posters: posterCache.size(),
+            lists: listCache.size(),
+            installs: installCache.size()
+        }
     });
 });
 
@@ -536,15 +724,29 @@ app.get('/admin/cache-stats', async (req, res) => {
     try {
         const keys = await redis.keys('*');
         res.json({
-            totalKeys: keys.length,
-            posters: keys.filter(k => k.startsWith('poster:')).length,
-            lists: keys.filter(k => k.startsWith('list:')).length,
-            installs: keys.filter(k => k.startsWith('install:')).length,
-            lastSeen: keys.filter(k => k.startsWith('last_seen:')).length
+            redis: {
+                totalKeys: keys.length,
+                posters: keys.filter(k => k.startsWith('poster:')).length,
+                lists: keys.filter(k => k.startsWith('list:')).length,
+                installs: keys.filter(k => k.startsWith('install:')).length,
+                lastSeen: keys.filter(k => k.startsWith('last_seen:')).length
+            },
+            memory: {
+                posters: posterCache.size(),
+                lists: listCache.size(),
+                installs: installCache.size()
+            }
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// Admin: Clear memory cache
+app.get('/admin/clear-memory-cache', (req, res) => {
+    posterCache.clear();
+    listCache.clear();
+    res.json({ success: true, message: 'Memory cache cleared' });
 });
 
 // Export for Vercel
@@ -555,6 +757,7 @@ if (require.main === module) {
     app.listen(CONFIG.PORT, async () => {
         console.log(`✓ Server running on port ${CONFIG.PORT}`);
         console.log('✓ Cron jobs scheduled for 00:00 and 12:00 IST');
+        console.log('✓ In-memory caching enabled');
         
         // Initial refresh on startup
         console.log('[Startup] Checking cache...');
