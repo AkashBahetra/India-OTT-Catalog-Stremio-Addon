@@ -114,10 +114,10 @@ const ALL_CATALOGS = {
         name: "Zee5 Top Shows (India)",
         fetcher: () => fetchTraktList('semicolumn', 'top-india-zee5-overall')
     },
-    'trakt_hotstar_overall': { 
+    'trakt_jiohotstar_overall': { 
         type: "series",
-        name: "Hotstar Top Shows (India)",
-        fetcher: () => fetchTraktList('semicolumn', 'top-india-hotstar-overall')
+        name: "JioHotstar Top Shows (India)",
+        fetcher: () => fetchTraktList('semicolumn', 'top-india-jiohotstar-overall')
     },
     'mdblist_latest_movies': { 
         type: "movie",
